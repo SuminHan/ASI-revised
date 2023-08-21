@@ -2,14 +2,15 @@ import numpy as np
 import os
 from config import PATH
 
-import asi.input_dataset as geds
+import asi_sm.input_dataset as geds
 import utils.utils as u
 import utils.utilsdeep as ud
-
+import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
-from asi.input_phenomenon import getinput
-from asi.input_neighborhood import getcontext
-from asi.interpolation import Interpolation as interpolation
+from asi_sm.input_phenomenon import getinput
+from asi_sm.input_neighborhood import getcontext
+from asi_sm.input_node2vec import getnode2vec
+from asi_sm.interpolation import Interpolation as interpolation
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from tensorflow.keras.backend import clear_session
 from tensorflow.keras.layers import Dense
@@ -69,6 +70,8 @@ class AttentionSpatialInterpolationModel:
         self.train_x_d, self.test_x_d, \
         self.train_x_g, self.test_x_g, \
         self.train_x_e, self.test_x_e, \
+        self.train_x_gn2v, self.test_x_gn2v, \
+        self.train_x_en2v, self.test_x_en2v, \
         self.X_train, self.X_test, self.y_train,\
         self.y_test, self.y_train_scale = geds.Geds(id_dataset=self.id_dataset,
                                                      num_nearest=self.num_nearest,
@@ -104,6 +107,8 @@ class AttentionSpatialInterpolationModel:
         else:
             self.shape_context_struc_target = 0
 
+        self.dim_node2vec = self.train_x_gn2v.shape[-1]
+
         ############## check id_dataset directory exists ######################
 
         # logs
@@ -113,16 +118,16 @@ class AttentionSpatialInterpolationModel:
             os.makedirs(self.path + '/logs/models/' + self.id_dataset)
 
         # general outputs
-        if not os.path.exists(self.path + '/output/hyperparameters/' + self.id_dataset):
-            os.makedirs(self.path + '/output/hyperparameters/' + self.id_dataset)
-        if not os.path.exists(self.path + '/output/images/architecture/' + self.id_dataset):
-            os.makedirs(self.path + '/output/images/architecture/' + self.id_dataset)
-        if not os.path.exists(self.path + '/output/images/nearest/' + self.id_dataset):
-            os.makedirs(self.path + '/output/images/nearest/' + self.id_dataset)
-        if not os.path.exists(self.path + '/output/models/' + self.id_dataset):
-            os.makedirs(self.path + '/output/models/' + self.id_dataset)
-        if not os.path.exists(self.path + '/output/result/' + self.id_dataset):
-            os.makedirs(self.path + '/output/result/' + self.id_dataset)
+        if not os.path.exists(self.path + '/output_sm/hyperparameters/' + self.id_dataset):
+            os.makedirs(self.path + '/output_sm/hyperparameters/' + self.id_dataset)
+        if not os.path.exists(self.path + '/output_sm/images/architecture/' + self.id_dataset):
+            os.makedirs(self.path + '/output_sm/images/architecture/' + self.id_dataset)
+        if not os.path.exists(self.path + '/output_sm/images/nearest/' + self.id_dataset):
+            os.makedirs(self.path + '/output_sm/images/nearest/' + self.id_dataset)
+        if not os.path.exists(self.path + '/output_sm/models/' + self.id_dataset):
+            os.makedirs(self.path + '/output_sm/models/' + self.id_dataset)
+        if not os.path.exists(self.path + '/output_sm/result/' + self.id_dataset):
+            os.makedirs(self.path + '/output_sm/result/' + self.id_dataset)
 
         # notebooks
         if not os.path.exists(self.path + '/notebooks/' + self.id_dataset):
@@ -198,6 +203,20 @@ class AttentionSpatialInterpolationModel:
                                 self.shape_context_geo_target_dist, self.num_nearest,
                                 self.geo, self.euclidean, num_nearest_geo, num_nearest_eucli)
 
+        ######################## Layer input of the n2v ########################
+
+        """
+        context_geo_target_dist: original data from the nearest points plus target and distance (m, seq , features + target + dist)
+        context_struc_w_lat_long: original data from the nearest points less lat and long (m, seq , features - 2)
+        context_struc_[]_target: original data from the nearest points plus target (m, seq , features + target)
+        dist_geo: geodesic distance from nearest points (m, seq)
+        dist_eucli: euclidean distance from nearest points (m, seq)
+        dist_cosine: cosine distance from nearest points (m, seq)
+        """
+
+        n2v_geo, \
+        n2v_eucli = getnode2vec(self.dim_node2vec, num_nearest_geo, num_nearest_eucli)
+
         ######################## Interpolation ########################
 
         embbeding = interpolation(
@@ -216,6 +235,8 @@ class AttentionSpatialInterpolationModel:
             graph_label=graph_label,
             dist_eucli=dist_eucli,
             dist_geo=dist_geo,
+            n2v_geo=n2v_geo,
+            n2v_eucli=n2v_eucli,
             sigma=sigma,
             num_nearest=self.num_nearest,
             num_nearest_geo=num_nearest_geo,
@@ -242,7 +263,8 @@ class AttentionSpatialInterpolationModel:
         if self.geo and self.euclidean:
             model = Model(inputs=[input_phenomenon, context_geo_target_dist,
                                   context_struc_eucli_target,
-                                  dist_geo, dist_eucli], outputs=[main_output])
+                                  dist_geo, dist_eucli,
+                                  n2v_geo, n2v_eucli], outputs=[main_output])
         elif self.geo:
             model = Model(inputs=[input_phenomenon, context_geo_target_dist,
                                   dist_geo], outputs=[main_output])
@@ -276,7 +298,7 @@ class AttentionSpatialInterpolationModel:
 
         # checkpoint
         weights_locate = label + '_weights.hdf5'
-        filepath = self.path + '/output/models/' + self.id_dataset + '/' + weights_locate
+        filepath = self.path + '/output_sm/models/' + self.id_dataset + '/' + weights_locate
         checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True,
                                      save_weights_only=True, mode='min')
 
@@ -286,7 +308,8 @@ class AttentionSpatialInterpolationModel:
             #
             features = [self.X_train[:, :], self.train_x_d[:, :num_nearest_geo, :],
                         self.train_x_p[:, :num_nearest_eucli, :], self.train_x_g[:, :num_nearest_geo],
-                        self.train_x_e[:, :num_nearest_eucli]]
+                        self.train_x_e[:, :num_nearest_eucli],
+                        self.train_x_gn2v[:, :num_nearest_geo+1], self.train_x_en2v[:, :num_nearest_eucli+1]]
 
         elif self.geo and not self.euclidean:
             #
@@ -302,14 +325,21 @@ class AttentionSpatialInterpolationModel:
             #
             features = [self.X_train[:, :]]
 
-        if self.early_stopping:
-            fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
-                            validation_split=validation_split, verbose=1,
-                            callbacks=[ud.history, ud.early_stopping, checkpoint])
+#        if self.early_stopping:
+#             fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+#                             validation_split=validation_split, verbose=1,
+#                             callbacks=[ud.history, ud.early_stopping, checkpoint])
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
+        fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+                        validation_split=validation_split, verbose=1,
+                        callbacks=[ud.history, early_stopping, reduce_lr, checkpoint])
 
-        else:
-            fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
-                            validation_split=validation_split, verbose=1, callbacks=[ud.history, checkpoint])
+        
+
+#         else:
+#             fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+#                             validation_split=validation_split, verbose=1, callbacks=[ud.history, checkpoint])
 
         return weights_locate, fit
 
@@ -332,7 +362,7 @@ class AttentionSpatialInterpolationModel:
         try:
 
             # load weights
-            model.load_weights(self.path + '/output/models/' + self.id_dataset + '/' + weights)
+            model.load_weights(self.path + '/output_sm/models/' + self.id_dataset + '/' + weights)
 
             # model compile
             model.compile(optimizer=self.optimizer, loss='mae')
@@ -344,12 +374,14 @@ class AttentionSpatialInterpolationModel:
                 predictions_test = model.predict(
                     [self.X_test[:, :], self.test_x_d[:, :num_nearest_geo, :],
                      self.test_x_p[:, :num_nearest_eucli, :], self.test_x_g[:, :num_nearest_geo],
-                     self.test_x_e[:, :num_nearest_eucli]], batch_size=batch_size)
+                     self.test_x_e[:, :num_nearest_eucli],
+                     self.test_x_gn2v[:, :num_nearest_geo+1], self.test_x_en2v[:, :num_nearest_eucli+1]], batch_size=batch_size)
                 # train
                 predictions_train = model.predict(
                     [self.X_train[:, :], self.train_x_d[:, :num_nearest_geo, :],
                      self.train_x_p[:, :num_nearest_eucli, :], self.train_x_g[:, :num_nearest_geo],
-                     self.train_x_e[:, :num_nearest_eucli]], batch_size=batch_size)
+                     self.train_x_e[:, :num_nearest_eucli],
+                     self.train_x_gn2v[:, :num_nearest_geo+1], self.train_x_en2v[:, :num_nearest_eucli+1]], batch_size=batch_size)
 
             elif self.geo:
                 # test
@@ -415,10 +447,10 @@ class AttentionSpatialInterpolationModel:
                 mape_train = u.mean_absolute_percentage_error(self.y_train, predictions_train_dim)
 
 
-            return (mae_log_test, np.sqrt(rmse_test), mape_test, mae_log_train, np.sqrt(rmse_train),  mape_train)
+            return (mae_log_test, np.sqrt(rmse_test), mape_test, mae_log_train, np.sqrt(rmse_train),  mape_train, predictions_test, predictions_train)
         except:
 
-            return (np.inf, np.inf, np.inf, np.inf, np.inf, np.inf)
+            return (np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf)
 
     def architecture(self, fitted_model, label: str = None):
         """
@@ -428,7 +460,7 @@ class AttentionSpatialInterpolationModel:
         :return:
         """
         # save image architecture model
-        file_path_arc = self.path + '/output/images/architecture/' + self.id_dataset + '/' + label + '.png'
+        file_path_arc = self.path + '/output_sm/images/architecture/' + self.id_dataset + '/' + label + '.png'
         plot_model(fitted_model, to_file=file_path_arc, show_shapes=True, show_layer_names=True)
 
     def output_layer(self, model, weight, layer, data, batch, file_name):
@@ -444,7 +476,7 @@ class AttentionSpatialInterpolationModel:
         """
 
         # load weights
-        model.load_weights(self.path + '/output/models/' + self.id_dataset + '/' + weight)
+        model.load_weights(self.path + '/output_sm/models/' + self.id_dataset + '/' + weight)
 
         # Compilando o modelo
         model.compile(optimizer=self.optimizer, loss='mae')
@@ -454,7 +486,7 @@ class AttentionSpatialInterpolationModel:
 
         predict = intermediate_layer_model.predict(data, batch_size=batch)
 
-        np.save(self.path + '/output/result/' + self.id_dataset + '/'+file_name, predict)
+        np.save(self.path + '/output_sm/result/' + self.id_dataset + '/'+file_name, predict)
 
 
         return predict

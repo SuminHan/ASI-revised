@@ -1,10 +1,10 @@
-from asi.model import AttentionSpatialInterpolationModel as asi
+from asi_sm.model import AttentionSpatialInterpolationModel as asi
 
 class train:
 
     def __init__(self, sigma, learning_rate, batch_size, num_neuron, num_layers, size_embedded,
                  num_nearest_geo, num_nearest_eucli, id_dataset, label, graph_label, num_nearest,
-                 epochs, validation_split, early_stopping, optimier, **kwargs):
+                 epochs, validation_split, early_stopping, optimier, sequence, **kwargs):
 
         """
 
@@ -43,6 +43,7 @@ class train:
         self.LABEL = label
         self.EARLY_STOPPING = early_stopping
         self.GRAPH_LABEL = graph_label
+        self.sequence = sequence
 
 
     def __call__(self):
@@ -52,7 +53,8 @@ class train:
         # build of the object
         spatial = asi(id_dataset=self.ID_DATASET,
                       num_nearest=self.NUM_NEAREST,
-                      early_stopping=self.EARLY_STOPPING
+                      early_stopping=self.EARLY_STOPPING,
+                      sequence = self.sequence
                       )
 
         # build of the model
@@ -91,14 +93,18 @@ class train:
                        spatial.train_x_d[:, :self.NUM_NEAREST_GEO, :],
                        spatial.train_x_p[:, :self.NUM_NEAREST_EUCLI, :],
                        spatial.train_x_g[:, :self.NUM_NEAREST_GEO],
-                       spatial.train_x_e[:, :self.NUM_NEAREST_EUCLI]]
+                       spatial.train_x_e[:, :self.NUM_NEAREST_EUCLI],
+                       spatial.train_x_gn2v[:, :self.NUM_NEAREST_GEO+1],
+                       spatial.train_x_en2v[:, :self.NUM_NEAREST_EUCLI+1]]
         )
 
         DATA_TEST = ([spatial.X_test,
                       spatial.test_x_d[:, :self.NUM_NEAREST_GEO, :],
                       spatial.test_x_p[:, :self.NUM_NEAREST_EUCLI, :],
                       spatial.test_x_g[:, :self.NUM_NEAREST_GEO],
-                      spatial.test_x_e[:, :self.NUM_NEAREST_EUCLI]]
+                      spatial.test_x_e[:, :self.NUM_NEAREST_EUCLI],
+                      spatial.test_x_gn2v[:, :self.NUM_NEAREST_GEO+1],
+                      spatial.test_x_en2v[:, :self.NUM_NEAREST_EUCLI+1]]
         )
 
         #Embedded

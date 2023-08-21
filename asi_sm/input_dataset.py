@@ -47,6 +47,12 @@ class Geds:
         assert isinstance(self.id_dataset, object)
 
         data = np.load(PATH + '/datasets/'+ self.id_dataset + '/data'+self.sequence+'.npz', allow_pickle=True)
+        # node2vec = np.load(PATH + f'/datasets/{self.id_dataset}/road2vec_n2v_32_nodes.npy')
+        # node2vec = np.load(PATH + f'/datasets/{self.id_dataset}/feat2vec_n2v_32_nodes.npy')
+        node2vec = np.load(PATH + f'/datasets/{self.id_dataset}/feat_norm.npy')
+        # node2vec = np.load(PATH + f'/datasets/{self.id_dataset}/road2vec_n2v_32.npy')
+
+        print('node2vec', node2vec.shape)
 
         # original data
         X_train = data['X_train']
@@ -55,18 +61,22 @@ class Geds:
         y_test = data['y_test']
 
         if self.geo:
-
             # the sequence of the nearest points (geodesic distance)
             nearest_train = data['idx_geo'][:X_train.shape[0], :self.num_nearest]
             nearest_dist_train = data['dist_geo'][:X_train.shape[0], :self.num_nearest]
             nearest_test = data['idx_geo'][X_train.shape[0]:, :self.num_nearest]
             nearest_dist_test = data['dist_geo'][X_train.shape[0]:, :self.num_nearest]
+            n2v_geo_train = np.concatenate((np.expand_dims(node2vec[:nearest_train.shape[0], :], 1), node2vec[nearest_train, :]), 1)
+            n2v_geo_test = np.concatenate((np.expand_dims(node2vec[:nearest_test.shape[0], :], 1), node2vec[nearest_test, :]), 1)
 
         else:
             nearest_train = 0
             nearest_dist_train = 0
             nearest_test = 0
             nearest_dist_test = 0
+            n2v_geo_train = 0
+            n2v_geo_test = 0
+
 
         if self.euclidean:
 
@@ -76,11 +86,16 @@ class Geds:
             nearest_dist_train_eucli = data['dist_eucli'][:X_train.shape[0], :self.num_nearest]
             nearest_test_eucli = data['idx_eucli'][X_train.shape[0]:, :self.num_nearest]
             nearest_dist_test_eucli = data['dist_eucli'][X_train.shape[0]:, :self.num_nearest]
+            n2v_eucli_train = np.concatenate((np.expand_dims(node2vec[:nearest_train_eucli.shape[0], :], 1), node2vec[nearest_train_eucli, :]), 1)
+            n2v_eucli_test = np.concatenate((np.expand_dims(node2vec[:nearest_test_eucli.shape[0], :], 1), node2vec[nearest_test_eucli, :]), 1)
+            
         else:
             nearest_train_eucli = 0
             nearest_dist_train_eucli = 0
             nearest_test_eucli = 0
             nearest_dist_test_eucli = 0
+            n2v_eucli_train = 0
+            n2v_eucli_test = 0
 
         # Concatenate the data
         X_train_test = np.concatenate((X_train, X_test), axis=0)
@@ -101,8 +116,10 @@ class Geds:
         if scale:
 
             scaler = StandardScaler()
-            X_train = scaler.fit_transform(X_train)
-            X_test = scaler.fit_transform(X_test)
+            # X_train = scaler.fit_transform(X_train)
+            # X_test = scaler.fit_transform(X_test)
+            X_train = (X_train - X_train.mean(0)) / X_train.std(0)
+            X_test = (X_test - X_test.mean(0)) / X_test.std(0)
 
             if self.geo:
                 nearest_dist_train = scaler.fit_transform(nearest_dist_train)
@@ -205,4 +222,5 @@ class Geds:
 
         return context_struc_eucli_target_train, context_struc_eucli_target_test, \
                context_geo_target_dist_train, context_geo_target_dist_test, dist_geo_train, dist_geo_test,\
-               dist_eucli_train, dist_eucli_test, X_train, X_test, y_train, y_test, y_train_scale
+               dist_eucli_train, dist_eucli_test, n2v_geo_train, n2v_geo_test, n2v_eucli_train, n2v_eucli_test, \
+               X_train, X_test, y_train, y_test, y_train_scale
