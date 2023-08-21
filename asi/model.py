@@ -5,7 +5,7 @@ from config import PATH
 import asi.input_dataset as geds
 import utils.utils as u
 import utils.utilsdeep as ud
-
+import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from asi.input_phenomenon import getinput
 from asi.input_neighborhood import getcontext
@@ -302,14 +302,21 @@ class AttentionSpatialInterpolationModel:
             #
             features = [self.X_train[:, :]]
 
-        if self.early_stopping:
-            fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
-                            validation_split=validation_split, verbose=1,
-                            callbacks=[ud.history, ud.early_stopping, checkpoint])
+#        if self.early_stopping:
+#             fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+#                             validation_split=validation_split, verbose=1,
+#                             callbacks=[ud.history, ud.early_stopping, checkpoint])
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", patience=5)
+        fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+                        validation_split=validation_split, verbose=1,
+                        callbacks=[ud.history, early_stopping, reduce_lr, checkpoint])
 
-        else:
-            fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
-                            validation_split=validation_split, verbose=1, callbacks=[ud.history, checkpoint])
+        
+
+#         else:
+#             fit = model.fit(features, [self.y_train], epochs=epochs, batch_size=batch_size,
+#                             validation_split=validation_split, verbose=1, callbacks=[ud.history, checkpoint])
 
         return weights_locate, fit
 
@@ -415,10 +422,10 @@ class AttentionSpatialInterpolationModel:
                 mape_train = u.mean_absolute_percentage_error(self.y_train, predictions_train_dim)
 
 
-            return (mae_log_test, np.sqrt(rmse_test), mape_test, mae_log_train, np.sqrt(rmse_train),  mape_train)
+            return (mae_log_test, np.sqrt(rmse_test), mape_test, mae_log_train, np.sqrt(rmse_train),  mape_train, predictions_test, predictions_train)
         except:
 
-            return (np.inf, np.inf, np.inf, np.inf, np.inf, np.inf)
+            return (np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf)
 
     def architecture(self, fitted_model, label: str = None):
         """
