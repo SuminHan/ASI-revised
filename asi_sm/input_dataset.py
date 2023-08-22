@@ -220,6 +220,11 @@ class Geds:
 
         # Original data are: X_train, X_test
 
+        # print('X_train.shape', X_train.shape,
+        #         'X_test.shape', X_test.shape,
+        #         'y_train.shape', y_train.shape,
+        #         'y_test.shape', y_test.shape)
+
         return context_struc_eucli_target_train, context_struc_eucli_target_test, \
                context_geo_target_dist_train, context_geo_target_dist_test, dist_geo_train, dist_geo_test,\
                dist_eucli_train, dist_eucli_test, n2v_geo_train, n2v_geo_test, n2v_eucli_train, n2v_eucli_test, \

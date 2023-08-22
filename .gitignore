@@ -121,6 +121,19 @@ venv.bak/
 # mkdocs documentation
 /site
 
+
+/datasets/fc/data_normalized.npz
+/datasets/fc/feat_norm.npy
+
+/datasets/kc/data_normalized.npz
+/datasets/kc/feat_norm.npy
+
+/datasets/poa/data_normalized.npz
+/datasets/poa/feat_norm.npy
+
+/datasets/sp/data_normalized.npz
+/datasets/sp/feat_norm.npy
+
 # mypy
 .mypy_cache/
 .dmypy.json
